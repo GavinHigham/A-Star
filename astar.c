@@ -19,7 +19,7 @@ char *test = {
 
 typedef struct node NODE, *PNODE;
 typedef struct node {
-	bool is_block;
+	bool is_block, is_visited;
 	float cost_to_self;
 	float cost_to_goal;
 	PNODE pi;
@@ -27,7 +27,7 @@ typedef struct node {
 
 NODE new_node(char c)
 {
-	return (NODE){false, INFINITY, INFINITY, NULL};
+	return (NODE){false, false, INFINITY, INFINITY, NULL};
 }
 
 //Returns a pointer to a new map, free when done.
@@ -54,6 +54,23 @@ int compare_path_cost(const void *node1, const void *node2)
 {
 	PNODE n1 = (PNODE)node1, n2 = (PNODE)node2;
 	return (n1->cost_to_self + n1->cost_to_goal) - (n2->cost_to_self + n2->cost_to_goal);
+}
+
+bool in_map(int x, int y, int numcols, int numrows)
+{
+	return x >= 0 && x <= numcols && y >= 0 && y <= numrows;
+}
+
+void add_neighbors(QUEUEP q, int x, int y, PNODE map, int numcols, int numrows)
+{
+	int x_offsets[] = {1, 1, 0, -1, -1, -1, 0, 1};
+	int y_offsets[] = {0, 1, 1, 1, 0, -1, -1, -1};
+	for (int i = 0; i < 8; i++) {
+		int nx = x+x_offsets[i], ny = y+y_offsets[i];
+		if (in_map(nx, ny, numcols, numrows)) {
+			PNODE n = &map[nx + numcols*ny];
+		}
+	}
 }
 
 int main(int argc, char **argv)
