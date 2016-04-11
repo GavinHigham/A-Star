@@ -28,8 +28,10 @@ int enqueue(QUEUEP q, PNODE n)
 {
 	if (q->length >= q->_length) { //The queue is already full, reallocate storage.
 		PNODE *new_storage = (PNODE *)realloc(q->_queue, sizeof(PNODE) * q->_length * GROWTH_FACTOR);
-		if (new_storage != NULL)
+		if (new_storage != NULL) {
 			q->_queue = new_storage;
+			q->_length = 2 * q->_length;
+		}
 		else
 			return -1; //Could not grow the internal array.
 	}
