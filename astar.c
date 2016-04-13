@@ -41,10 +41,8 @@ NODE new_node(char c, int x, int y)
 //Returns a pointer to a new map, free when done.
 void init_map(PNODE map, char *mapstr, int numcols, int numrows)
 {
-	int rowchars = numcols + 1;
-	for (int i = 0; i < numrows*rowchars; i++)
-		if (mapstr[i] != '\n')
-			map[i%rowchars + (i/rowchars)*numcols] = new_node(mapstr[i], i%rowchars, i/rowchars);
+	for (int i = 0; i < numrows*numcols; i++)
+		map[i] = new_node(mapstr[i%numcols + (i/numcols)*(numcols+1)], i%numcols, i/numcols);
 }
 
 float path_cost_heuristic(int x1, int y1, int x2, int y2)

@@ -32,8 +32,10 @@ int enqueue(QUEUEP q, PNODE n)
 			q->_queue = new_storage;
 			q->_length = 2 * q->_length;
 		}
-		else
+		else {
+			assert(0);
 			return -1; //Could not grow the internal array.
+		}
 	}
 	q->_queue[(q->_first+q->length) % q->_length] = n; //The slot "length" distance from _first is now filled.
 	q->length++;
