@@ -34,7 +34,7 @@ typedef struct node {
 
 NODE new_node(char c, int x, int y)
 {
-	printf("%2i %2i |", x, y);
+	//printf("%2i %2i |", x, y);
 	return (NODE){(c==' ')?true:false, UNVISITED, x, y, INFINITY, INFINITY, NULL};
 }
 
@@ -66,32 +66,46 @@ PNODE in_map(int x, int y, PNODE map, int numcols, int numrows)
 
 void consider_neighbors(QUEUEP q, PNODE current, PNODE map, int numcols, int numrows)
 {
-	int x = current->x, y = current->y;
-	int xo[] = {1, 1, 0, -1, -1, -1, 0, 1};
-	int yo[] = {0, 1, 1, 1, 0, -1, -1, -1};
-	for (int i = 0; i < 8; i++) {
-		PNODE n = in_map(x+xo[i], y+yo[i], map, numcols, numrows);
-		if (!n || !n->traversible || n->state == CLOSED)
-			continue;
-		float ecost;
-		if (i%2) { //n is diagonal-adjacent
-			PNODE c1 = in_map(x+xo[(i+1)%8], y+yo[(i+1)%8], map, numcols, numrows);
-			PNODE c2 = in_map(x+xo[(i+7)%8], y+yo[(i+7)%8], map, numcols, numrows);
-			ecost = (c1->traversible || c2->traversible) ? DIAG_COST : LEAK_COST;
-		} else { //n is regular-adjacent
-			ecost = EDGE_COST;
-		}
-		if (current->cost_to_self + ecost >= n->cost_to_self)
-			continue;
-		n->pi = current;
-		n->cost_to_self = current->cost_to_self + ecost;
-		n->cost_to_goal = current->cost_to_self + path_cost_heuristic(x, y, n->x, n->y);
-		if (n->state == UNVISITED) {
-			n->state = VISITED;
-			heap_enqueue(q, n, compare_path_cost);
+	for (int x = current->x-1; x <= current->x+1; x++) {
+		for (int y = current->y-1; y <= current->y+1; y++) {
+			PNODE n = in_map(x, y, map, numcols, numrows);
+			if (n == current || !n || !n->traversible || n->state == CLOSED)
+				continue;
+			float ecost;
+			if (!(x == current->x || y == current->y)) { //n is diagonal-adjacent
+				PNODE c1 = in_map(x, current->y, map, numcols, numrows);
+				PNODE c2 = in_map(current->x, y, map, numcols, numrows);
+				ecost = (c1->traversible || c2->traversible) ? DIAG_COST : LEAK_COST;
+			} else { //n is regular-adjacent
+				ecost = EDGE_COST;
+			}
+			if ((current->cost_to_self + ecost) >= n->cost_to_self)
+				continue;
+			n->pi = current;
+			n->cost_to_self = current->cost_to_self + ecost;
+			n->cost_to_goal = current->cost_to_self + path_cost_heuristic(x, y, n->x, n->y);
+			if (n->state == UNVISITED) {
+				n->state = VISITED;
+				heap_enqueue(q, n, compare_path_cost);
+			}
 		}
 	}
 }
+
+// void print_node(PNODE n)
+// {
+// 	printf("%s, ", n->traversible?"traversible":"!traversible");
+// 	char *statestr = NULL;
+// 	switch (n->state) {
+// 		case CLOSED:    statestr = "CLOSED";    break;
+// 		case UNVISITED: statestr = "UNVISITED"; break;
+// 		case VISITED:   statestr = "VISITED";   break;
+// 	}
+// 	printf("%s, ", statestr);
+// 	printf("<%i %i>, ", n->x, n->y);
+// 	printf("[%f %f], ", n->cost_to_self, n->cost_to_goal);
+// 	printf("%p\n", n->pi);
+// }
 
 int main(int argc, char **argv)
 {
@@ -131,7 +145,6 @@ int main(int argc, char **argv)
 		scanf("%i %i", &goal_x, &goal_y);
 	} while (!(goal_node = in_map(goal_x, goal_y, map, numcols, numrows)));
 	printf("From (%i, %i) to (%i, %i)\n", start_x, start_y, goal_x, goal_y);
-	printf("From (%i, %i) to (%i, %i)\n", start_node->x, start_node->y, goal_node->x, goal_node->y);
 	start_node->cost_to_self = 0;
 	start_node->cost_to_goal = path_cost_heuristic(start_x, start_y, goal_x, goal_y);
 	QUEUEP open_set = new_queue(numcols+numrows);
