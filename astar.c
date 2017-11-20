@@ -122,11 +122,10 @@ PNODE map_new(char *mapstr, int *numcols, int *numrows)
 
 	//Allocate and init
 	PNODE map = malloc(cols * rows * sizeof(NODE));
-	if (map == NULL)
-		return NULL;
+	if (map)
+		for (int i = 0; i < rows*cols; i++)
+			map[i] = new_node(mapstr[i%cols + (i/cols)*(cols+1)], i%cols, i/cols);
 
-	for (int i = 0; i < rows*cols; i++)
-		map[i] = new_node(mapstr[i%cols + (i/cols)*(cols+1)], i%cols, i/cols);
 	return map;
 }
 
@@ -139,13 +138,13 @@ void read_map_file(int argc, char **argv, char **mapstr)
 		struct stat buf;
 		fstat(fd, &buf);
 		filestr = (char *)malloc(buf.st_size + 1);
-		read(fd, filestr, buf.st_size);
+		if (filestr) {
+			read(fd, filestr, buf.st_size);
+			filestr[buf.st_size] = '\0';
+		}
 		close(fd);
-		filestr[buf.st_size] = '\0';
-		*mapstr = filestr;
-	} else {
-		*mapstr = strdup(test);
 	}
+	*mapstr = filestr ? filestr : strdup(test);
 	printf("%s\n", *mapstr);
 }
 
