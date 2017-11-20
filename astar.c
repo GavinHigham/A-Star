@@ -1,3 +1,4 @@
+#include "heap.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -6,13 +7,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <math.h>
-#include "queue.h"
 
-#define EDGE_COST 1
-#define DIAG_COST sqrt(2)
-#define LEAK_COST INFINITY
-
-char test[] = {
+char *test = {
 "#    #   # #    #\n"
 "  #    #   # #  #\n"
 "    #      #   ##\n"
@@ -21,40 +17,61 @@ char test[] = {
 "#    #      #   #\n"
 };
 
+//Algorithm code
+
+#define EDGE_COST 1
+#define DIAG_COST sqrt(2)
+#define LEAK_COST INFINITY
+
+enum {MAX_NUM_NEIGHBORS = 8};
 enum node_state {CLOSED, UNVISITED, VISITED};
-typedef struct node NODE, *PNODE;
+struct node;
 typedef struct node {
 	bool traversible;
 	enum node_state state;
 	int x, y;
 	float cost_to_self;
 	float cost_to_goal;
-	PNODE pi;
+	struct node *pi;
 } NODE, *PNODE;
-
-NODE new_node(char c, int x, int y)
-{
-	//printf("%2i %2i |", x, y);
-	return (NODE){(c==' ')?true:false, UNVISITED, x, y, INFINITY, INFINITY, NULL};
-}
-
-//Returns a pointer to a new map, free when done.
-void init_map(PNODE map, char *mapstr, int numcols, int numrows)
-{
-	for (int i = 0; i < numrows*numcols; i++)
-		map[i] = new_node(mapstr[i%numcols + (i/numcols)*(numcols+1)], i%numcols, i/numcols);
-}
 
 float path_cost_heuristic(int x1, int y1, int x2, int y2)
 {
 	float x = abs(x1-x2), y = abs(y1-y2);
-	return fmaf(fmin(x, y), sqrt(2) - 1, fmin(x, y));
+	return fmaf(DIAG_COST, fmin(x, y), fabs(x - y));
 }
 
 int compare_path_cost(const void *node1, const void *node2)
 {
-	return ((PNODE)node2)->cost_to_self - ((PNODE)node1)->cost_to_self;
+	PNODE n1 = (PNODE)node1, n2 = (PNODE)node2;
+	float n1_cost = (n1->cost_to_self + n1->cost_to_goal);
+	float n2_cost = (n2->cost_to_self + n2->cost_to_goal);
+
+	if (n1_cost < n2_cost)
+		return 1;
+	if (n1_cost > n2_cost)
+		return -1;
+	return 0;
 }
+
+void visit_neighbors(HEAP *h, PNODE current, PNODE goal, PNODE neighbors[], float edge_costs[], int num_neighbors)
+{
+	for (int i = 0; i < num_neighbors; i++) {
+		PNODE n = neighbors[i];
+		if (current->cost_to_self + edge_costs[i] >= n->cost_to_self)
+			continue;
+
+		n->pi = current;
+		n->cost_to_self = current->cost_to_self + edge_costs[i];
+		n->cost_to_goal = current->cost_to_self + path_cost_heuristic(n->x, n->y, goal->x, goal->y);
+		if (n->state == UNVISITED) {
+			n->state = VISITED;
+			heap_add(h, n);
+		}
+	}
+}
+
+//Code specific to a rectangular grid, with diagonals
 
 PNODE in_map(int x, int y, PNODE map, int numcols, int numrows)
 {
@@ -64,78 +81,85 @@ PNODE in_map(int x, int y, PNODE map, int numcols, int numrows)
 		return NULL;
 }
 
-void consider_neighbors(QUEUEP q, PNODE current, PNODE map, int numcols, int numrows)
+int get_neighbors(PNODE map, int numcols, int numrows, PNODE current,
+	PNODE neighbors[MAX_NUM_NEIGHBORS], float edge_costs[MAX_NUM_NEIGHBORS])
 {
-	for (int x = current->x-1; x <= current->x+1; x++) {
-		for (int y = current->y-1; y <= current->y+1; y++) {
+	int num_written = 0;
+	for (int x = current->x - 1; x <= current->x + 1; x++) {
+		for (int y = current->y - 1; y <= current->y + 1; y++) {
 			PNODE n = in_map(x, y, map, numcols, numrows);
-			if (n == current || !n || !n->traversible || n->state == CLOSED)
+
+			if (!n || !n->traversible || n->state == CLOSED)
 				continue;
-			float ecost;
-			if (!(x == current->x || y == current->y)) { //n is diagonal-adjacent
+
+			//Determine the cost of each edge (adjacent, diagonal, leak)
+			float ecost = INFINITY;
+			if (!(x == current->x || y == current->y)) {
 				PNODE c1 = in_map(x, current->y, map, numcols, numrows);
 				PNODE c2 = in_map(current->x, y, map, numcols, numrows);
 				ecost = (c1->traversible || c2->traversible) ? DIAG_COST : LEAK_COST;
-			} else { //n is regular-adjacent
+			} else {
 				ecost = EDGE_COST;
 			}
-			if ((current->cost_to_self + ecost) >= n->cost_to_self)
-				continue;
-			n->pi = current;
-			n->cost_to_self = current->cost_to_self + ecost;
-			n->cost_to_goal = current->cost_to_self + path_cost_heuristic(x, y, n->x, n->y);
-			if (n->state == UNVISITED) {
-				n->state = VISITED;
-				heap_enqueue(q, n, compare_path_cost);
-			}
+			neighbors[num_written] = n;
+			edge_costs[num_written++] = ecost;
 		}
 	}
+	return num_written;
 }
 
-// void print_node(PNODE n)
-// {
-// 	printf("%s, ", n->traversible?"traversible":"!traversible");
-// 	char *statestr = NULL;
-// 	switch (n->state) {
-// 		case CLOSED:    statestr = "CLOSED";    break;
-// 		case UNVISITED: statestr = "UNVISITED"; break;
-// 		case VISITED:   statestr = "VISITED";   break;
-// 	}
-// 	printf("%s, ", statestr);
-// 	printf("<%i %i>, ", n->x, n->y);
-// 	printf("[%f %f], ", n->cost_to_self, n->cost_to_goal);
-// 	printf("%p\n", n->pi);
-// }
+NODE new_node(char c, int x, int y)
+{
+	return (NODE){(c == ' ') ? true : false, UNVISITED, x, y, INFINITY, INFINITY, NULL};
+}
+
+//Returns a pointer to a new map, free when done.
+PNODE map_new(char *mapstr, int *numcols, int *numrows)
+{
+	int cols = *numcols = strchr(mapstr, '\n') - mapstr;
+	int rows = *numrows = strlen(mapstr) / (cols + 1); //Don't count the '\n' chars
+	printf("%i columns, %i rows\n", cols, rows);
+
+	//Allocate and init
+	PNODE map = malloc(cols * rows * sizeof(NODE));
+	if (map == NULL)
+		return NULL;
+
+	for (int i = 0; i < rows*cols; i++)
+		map[i] = new_node(mapstr[i%cols + (i/cols)*(cols+1)], i%cols, i/cols);
+	return map;
+}
+
+void read_map_file(int argc, char **argv, char **mapstr)
+{
+	//Load in the map.
+	char *filestr = NULL;
+	int fd;
+	if (argc > 1 && (fd = open(argv[1], O_RDONLY))) {
+		struct stat buf;
+		fstat(fd, &buf);
+		filestr = (char *)malloc(buf.st_size + 1);
+		read(fd, filestr, buf.st_size);
+		close(fd);
+		filestr[buf.st_size] = '\0';
+		*mapstr = filestr;
+	} else {
+		*mapstr = strdup(test);
+	}
+	printf("%s\n", *mapstr);
+}
 
 int main(int argc, char **argv)
 {
 	char *mapstr = NULL;
-	bool mapstr_dynamic = false;
-	int fd;
-	struct stat buf;
-	//Load in the map.
-	if (argc > 1 && (fd = open(argv[1], O_RDONLY))) {
-		fstat(fd, &buf);
-		mapstr = (char *)malloc(buf.st_size+1);
-		mapstr_dynamic = true;
-		read(fd, mapstr, buf.st_size);
-		close(fd);
-		mapstr[buf.st_size] = '\0';
-	} else {
-		mapstr = test;
-	}
-	printf("%s\n", mapstr);
-	int numcols = strchr(mapstr, '\n') - mapstr;
-	int numrows = strlen(mapstr) / (numcols + 1); //Don't count the '\n' chars
-	printf("%i columns, %i rows\n", numcols, numrows);
-	//Allocate and init
-	PNODE map = malloc(numcols * numrows * sizeof(NODE));
-	if (map == NULL)
-		return -1;
-	init_map(map, mapstr, numcols, numrows);
-	//Get start and goal coords
+	read_map_file(argc, argv, &mapstr);
+
+	int numrows, numcols;
 	int start_x = -1, start_y = -1, goal_x = -1, goal_y = -1;
-	PNODE start_node, goal_node;
+	PNODE start_node = NULL, goal_node = NULL;
+	PNODE map = map_new(mapstr, &numcols, &numrows);
+
+	//Get start and goal coords from user
 	do {
 		printf("Enter valid start coordinates:\n");
 		scanf("%i %i", &start_x, &start_y);
@@ -144,26 +168,36 @@ int main(int argc, char **argv)
 		printf("Enter valid goal coordinates:\n");
 		scanf("%i %i", &goal_x, &goal_y);
 	} while (!(goal_node = in_map(goal_x, goal_y, map, numcols, numrows)));
+
 	printf("From (%i, %i) to (%i, %i)\n", start_x, start_y, goal_x, goal_y);
+
 	start_node->cost_to_self = 0;
 	start_node->cost_to_goal = path_cost_heuristic(start_x, start_y, goal_x, goal_y);
-	QUEUEP open_set = new_queue(numcols+numrows);
-	heap_enqueue(open_set, start_node, compare_path_cost);
-	while (open_set->length > 0) {
-		PNODE current = heap_dequeue(open_set, compare_path_cost);
+
+	HEAP *open_set = heap_new(numcols+numrows, compare_path_cost);
+	heap_add(open_set, start_node);
+
+	while (peek(open_set) != NULL) {
+		PNODE current = heap_remove(open_set);
 		if (current == goal_node)
 			break;
+
 		current->state = CLOSED;
-		consider_neighbors(open_set, current, map, numcols, numrows);
+		PNODE neighbors[MAX_NUM_NEIGHBORS];
+		float edge_costs[MAX_NUM_NEIGHBORS];
+		int num_neighbors = get_neighbors(map, numcols, numrows, current, neighbors, edge_costs);
+		visit_neighbors(open_set, current, goal_node, neighbors, edge_costs, num_neighbors);
+		//mapstr[current->x + current->y*(numcols + 1)] = direction_from_node(current);
 	}
+
 	for (PNODE current = goal_node; current != NULL; current = current->pi)
 		mapstr[current->x + current->y*(numcols + 1)] = '*';
+
 	printf("%s\n", mapstr);
 	printf("Cost to goal node: %f\n", goal_node->cost_to_self);
 
 	free(map);
-	free_queue(open_set);
-	if (mapstr_dynamic)
-		free(mapstr);
+	free(mapstr);
+	heap_free(open_set);
 	return 0;
 }
